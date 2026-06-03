@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EXIFScope — Metadata Analyzer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0c0f;
+      --surface: #10141a;
+      --border: #1e2730;
+      --accent: #00ffc8;
+      --accent2: #0af;
+      --warn: #ff6b35;
+      --text: #c8d8e8;
+      --muted: #4a6070;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-display: 'Syne', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,255,200,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,200,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 48px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+      border: 2px solid var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 20px rgba(0,255,200,0.2);
+      flex-shrink: 0;
+    }
+
+    .logo-text {
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-text span { color: var(--accent); }
+
+    .logo-sub {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 16px;
+      padding: 56px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .drop-zone::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(0,255,200,0.04), transparent 70%);
+      pointer-events: none;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      box-shadow: 0 0 40px rgba(0,255,200,0.08), inset 0 0 40px rgba(0,255,200,0.04);
+    }
+
+    .drop-zone.dragover {
+      transform: scale(1.01);
+    }
+
+    .drop-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      display: block;
+      opacity: 0.7;
+    }
+
+    .drop-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .drop-sub {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .drop-sub strong { color: var(--accent); }
+
+    .browse-btn {
+      margin-top: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 24px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+    }
+
+    .browse-btn:hover {
+      background: rgba(0,255,200,0.1);
+      box-shadow: 0 0 20px rgba(0,255,200,0.15);
+    }
+
+    #fileInput { display: none; }
+
+    /* Action Bar */
+    .action-bar {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      flex: 1;
+      min-width: 140px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      font-weight: 700;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      box-shadow: 0 0 30px rgba(0,255,200,0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      border-color: var(--muted);
+      color: #fff;
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--warn);
+      border: 1px solid rgba(255,107,53,0.3);
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(255,107,53,0.1);
+    }
+
+    .btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* File info strip */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+
+    .file-info.show { display: flex; }
+
+    .file-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .file-thumb-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      background: var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .file-name { color: #fff; font-weight: 700; }
+    .file-size { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    .file-badge {
+      margin-left: auto;
+      padding: 3px 10px;
+      border-radius: 4px;
+      background: rgba(0,255,200,0.1);
+      color: var(--accent);
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Loading */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .loading.show { display: block; }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 2px;
+    }
+
+    /* Results */
+    .results { display: none; margin-top: 32px; }
+    .results.show { display: block; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: gap;
+      gap: 12px;
+    }
+
+    .results-title {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tag-count {
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: rgba(0,255,200,0.1);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .search-box {
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      width: 220px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-box:focus { border-color: var(--accent); }
+    .search-box::placeholder { color: var(--muted); }
+
+    /* Category tabs */
+    .cat-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .cat-tab {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+    }
+
+    .cat-tab:hover { color: var(--text); border-color: var(--muted); }
+
+    .cat-tab.active {
+      background: rgba(0,255,200,0.1);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Metadata table */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 600px) { .meta-grid { grid-template-columns: 1fr; } }
+
+    .meta-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      transition: border-color 0.2s;
+      animation: fadeSlide 0.3s ease both;
+    }
+
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .meta-card:hover { border-color: var(--muted); }
+
+    .meta-key {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .meta-val {
+      font-size: 14px;
+      color: #fff;
+      word-break: break-all;
+      line-height: 1.5;
+    }
+
+    .meta-val.highlight { color: var(--accent); }
+    .meta-val.warn { color: var(--warn); }
+
+    /* GPS Map link */
+    .gps-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent2);
+      font-size: 12px;
+      text-decoration: none;
+      margin-top: 6px;
+      transition: opacity 0.2s;
+    }
+
+    .gps-link:hover { opacity: 0.7; }
+
+    /* Empty / Error states */
+    .state-msg {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    .state-msg .icon { font-size: 36px; margin-bottom: 12px; display: block; }
+
+    /* Export bar */
+    .export-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+
+    .export-btn {
+      padding: 9px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+    }
+
+    .export-btn:hover {
+      color: #fff;
+      border-color: var(--muted);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-size: 13px;
+      box-shadow: 0 0 30px rgba(0,255,200,0.2);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 999;
+      font-family: var(--font-mono);
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="logo-icon">🔬</div>
+    <div>
+      <div class="logo-text">EXIF<span>Scope</span></div>
+      <div class="logo-sub">Metadata Analyzer</div>
+    </div>
+    <div class="header-right">
+      <div class="status-dot"></div>
+      SERVER ACTIVE
+    </div>
+  </header>
+
+  <!-- Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <span class="drop-icon">📂</span>
+    <div class="drop-title">Drop a file to analyze</div>
+    <div class="drop-sub">
+      Supports <strong>JPG, PNG, TIFF, HEIC, PDF, MP4, MOV</strong> and more<br>
+      Metadata is extracted locally via your Python backend
+    </div>
+    <button class="browse-btn" onclick="document.getElementById('fileInput').click()">
+      ⊕ BROWSE FILES
+    </button>
+    <input type="file" id="fileInput" accept="*/*"/>
+  </div>
+
+  <!-- File Info -->
+  <div class="file-info" id="fileInfo">
+    <div class="file-thumb-icon" id="fileThumbWrap">📄</div>
+    <div>
+      <div class="file-name" id="fileName">—</div>
+      <div class="file-size" id="fileSize">—</div>
+    </div>
+    <div class="file-badge" id="fileExt">—</div>
+  </div>
+
+  <!-- Action Bar -->
+  <div class="action-bar" style="margin-top: 16px;">
+    <button class="btn btn-primary" id="analyzeBtn" disabled onclick="analyzeFile()">
+      ▶ ANALYZE METADATA
+    </button>
+    <button class="btn btn-danger" id="stripBtn" disabled onclick="stripMetadata()">
+      ✕ STRIP ALL METADATA
+    </button>
+    <button class="btn btn-secondary" id="clearBtn" onclick="clearAll()">
+      ↺ CLEAR
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">EXTRACTING METADATA...</div>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+    <div class="results-header">
+      <div class="results-title">
+        Metadata Tags
+        <span class="tag-count" id="tagCount">0</span>
+      </div>
+      <input class="search-box" type="text" placeholder="🔍 Search tags..." id="searchBox" oninput="filterTags()"/>
+    </div>
+
+    <div class="cat-tabs" id="catTabs"></div>
+    <div class="meta-grid" id="metaGrid"></div>
+
+    <div class="export-bar">
+      <button class="export-btn" onclick="exportJSON()">⬇ Export JSON</button>
+      <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="export-btn" onclick="copyAll()">⧉ Copy All</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API = 'http://127.0.0.1:5000';
+  let currentFile = null;
+  let allTags = [];
+  let activeCategory = 'ALL';
+
+  // Drag & Drop
+  const dropZone = document.getElementById('dropZone');
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) setFile(e.target.files[0]);
+  });
+
+  function setFile(file) {
+    currentFile = file;
+    const ext = file.name.split('.').pop().toUpperCase();
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent = formatSize(file.size);
+    document.getElementById('fileExt').textContent = ext;
+
+    // Thumbnail for images
+    const wrap = document.getElementById('fileThumbWrap');
+    if (file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.className = 'file-thumb';
+      img.src = URL.createObjectURL(file);
+      wrap.replaceWith(img);
+      img.id = 'fileThumbWrap';
+    } else {
+      wrap.textContent = fileIcon(ext);
+    }
+
+    document.getElementById('fileInfo').classList.add('show');
+    document.getElementById('analyzeBtn').disabled = false;
+    document.getElementById('stripBtn').disabled = false;
+    document.getElementById('results').classList.remove('show');
+    document.getElementById('loading').classList.remove('show');
+  }
+
+  function fileIcon(ext) {
+    const map = { PDF: '📕', MP4: '🎬', MOV: '🎬', MP3: '🎵', WAV: '🎵', ZIP: '📦', RAR: '📦' };
+    return map[ext] || '📄';
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+  }
+
+  async function analyzeFile() {
+    if (!currentFile) return;
+    document.getElementById('loading').classList.add('show');
+    document.getElementById('results').classList.remove('show');
+
+    const formData = new FormData();
+    formData.append('file', currentFile);
+
+    try {
+      const res = await fetch(`${API}/extract`, { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.error) { showToast('⚠ ' + data.error); }
+      else { renderResults(data.metadata); }
+    } catch (err) {
+      showToast('⚠ Cannot reach backend. Is server.py running?');
+    }
+
+    document.getElementById('loading').classList.remove('show');
+  }
+
+  async function stripMetadata() {
+    if (!currentFile) return;
+    showToast('⏳ Stripping metadata...');
+    const formData = new FormData();
+    formData.append('file', currentFile);
+
+    try {
+      const res = await fetch(`${API}/strip`, { method: 'POST', body: formData });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'stripped_' + currentFile.name;
+      a.click();
+      showToast('✓ Metadata stripped & downloaded!');
+    } catch (err) {
+      showToast('⚠ Strip failed. Check backend.');
+    }
+  }
+
+  function renderResults(metadata) {
+    allTags = Object.entries(metadata).map(([key, val]) => {
+      const category = guessCategory(key);
+      return { key, val: String(val), category };
+    });
+
+    document.getElementById('tagCount').textContent = allTags.length;
+    buildCategoryTabs();
+    renderGrid(allTags);
+    document.getElementById('results').classList.add('show');
+  }
+
+  function guessCategory(key) {
+    const k = key.toLowerCase();
+    if (k.includes('gps') || k.includes('latitude') || k.includes('longitude')) return 'GPS';
+    if (k.includes('make') || k.includes('model') || k.includes('software') || k.includes('device')) return 'DEVICE';
+    if (k.includes('date') || k.includes('time') || k.includes('create') || k.includes('modify')) return 'DATE';
+    if (k.includes('width') || k.includes('height') || k.includes('pixel') || k.includes('resolution') || k.includes('color') || k.includes('bit')) return 'IMAGE';
+    if (k.includes('iso') || k.includes('aperture') || k.includes('shutter') || k.includes('focal') || k.includes('flash') || k.includes('exposure') || k.includes('white')) return 'CAMERA';
+    if (k.includes('author') || k.includes('copyright') || k.includes('artist') || k.includes('title') || k.includes('comment')) return 'INFO';
+    return 'OTHER';
+  }
+
+  function buildCategoryTabs() {
+    const cats = ['ALL', ...new Set(allTags.map(t => t.category))];
+    const container = document.getElementById('catTabs');
+    container.innerHTML = '';
+    cats.forEach(cat => {
+      const btn = document.createElement('button');
+      btn.className = 'cat-tab' + (cat === 'ALL' ? ' active' : '');
+      const count = cat === 'ALL' ? allTags.length : allTags.filter(t => t.category === cat).length;
+      btn.textContent = `${cat} (${count})`;
+      btn.onclick = () => {
+        activeCategory = cat;
+        document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        filterTags();
+      };
+      container.appendChild(btn);
+    });
+  }
+
+  function filterTags() {
+    const q = document.getElementById('searchBox').value.toLowerCase();
+    let filtered = allTags;
+    if (activeCategory !== 'ALL') filtered = filtered.filter(t => t.category === activeCategory);
+    if (q) filtered = filtered.filter(t => t.key.toLowerCase().includes(q) || t.val.toLowerCase().includes(q));
+    renderGrid(filtered);
+  }
+
+  const GPS_KEYS = ['gpslatitude', 'gpslongitude'];
+  const HIGHLIGHT_KEYS = ['make', 'model', 'software', 'devicemake', 'devicemodel'];
+  const WARN_KEYS = ['gps', 'latitude', 'longitude'];
+
+  function renderGrid(tags) {
+    const grid = document.getElementById('metaGrid');
+    grid.innerHTML = '';
+
+    if (tags.length === 0) {
+      grid.innerHTML = '<div class="state-msg" style="grid-column:span 2"><span class="icon">🔍</span>No matching tags found.</div>';
+      return;
+    }
+
+    let gpsLat = null, gpsLon = null;
+
+    tags.forEach(({ key, val }, i) => {
+      const card = document.createElement('div');
+      card.className = 'meta-card';
+      card.style.animationDelay = (i * 0.02) + 's';
+
+      const kl = key.toLowerCase().replace(/\s/g, '');
+      if (kl.includes('gpslatitude') && !kl.includes('ref')) gpsLat = val;
+      if (kl.includes('gpslongitude') && !kl.includes('ref')) gpsLon = val;
+
+      const isHighlight = HIGHLIGHT_KEYS.some(h => kl.includes(h));
+      const isWarn = WARN_KEYS.some(w => kl.includes(w));
+      const valClass = isWarn ? 'warn' : isHighlight ? 'highlight' : '';
+
+      card.innerHTML = `
+        <div class="meta-key">${key}</div>
+        <div class="meta-val ${valClass}">${escapeHtml(val)}</div>
+      `;
+
+      if (kl.includes('gpslongitude') && gpsLat) {
+        card.querySelector('.meta-val').insertAdjacentHTML('afterend',
+          `<a class="gps-link" href="https://maps.google.com/?q=${encodeURIComponent(gpsLat)},${encodeURIComponent(val)}" target="_blank">
+            🗺 Open in Google Maps
+          </a>`);
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function exportJSON() {
+    const obj = {};
+    allTags.forEach(t => obj[t.key] = t.val);
+    download('exif_metadata.json', JSON.stringify(obj, null, 2), 'application/json');
+    showToast('✓ JSON exported');
+  }
+
+  function exportCSV() {
+    const rows = [['Tag', 'Value'], ...allTags.map(t => [t.key, t.val])];
+    const csv = rows.map(r => r.map(v => `"${v.replace(/"/g,'""')}"`).join(',')).join('\n');
+    download('exif_metadata.csv', csv, 'text/csv');
+    showToast('✓ CSV exported');
+  }
+
+  function copyAll() {
+    const text = allTags.map(t => `${t.key}: ${t.val}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => showToast('✓ Copied to clipboard'));
+  }
+
+  function download(name, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+  }
+
+  function clearAll() {
+    currentFile = null;
+    allTags = [];
+    document.getElementById('fileInfo').classList.remove('show');
+    document.getElementById('results').classList.remove('show');
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('analyzeBtn').disabled = true;
+    document.getElementById('stripBtn').disabled = true;
+    document.getElementById('fileInput').value = '';
+    const wrap = document.getElementById('fileThumbWrap');
+    if (wrap && wrap.tagName === 'IMG') {
+      const div = document.createElement('div');
+      div.className = 'file-thumb-icon';
+      div.id = 'fileThumbWrap';
+      div.textContent = '📄';
+      wrap.replaceWith(div);
+    }
+  }
+
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>
